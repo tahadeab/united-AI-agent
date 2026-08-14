@@ -1,38 +1,33 @@
-# تصميم العميل الذكي "يونايتد" (United AI Agent)
+# United AI Agent — Design
 
-## الرؤية العامة
-"يونايتد" هو عميل ذكي متعدد المهام مصمم ليكون مرناً وقابلاً للتوسع. يعتمد على بنية برمجية حديثة تتيح له التفاعل مع المستخدم، تنفيذ الأوامر، والوصول إلى أدوات خارجية.
+## Goals
 
-## المكونات الأساسية (Architecture)
+United is designed as a small, dependable agent core rather than a provider-specific chatbot. The architecture separates configuration, model transport, memory, orchestration, and tools so each concern can evolve independently.
 
-### 1. النواة (Core)
-- **المحرك (Engine):** المسؤول عن معالجة المدخلات واتخاذ القرارات باستخدام نماذج اللغة الكبيرة (LLMs).
-- **الذاكرة (Memory):** نظام لتخزين سياق المحادثات والبيانات المهمة لضمان استمرارية الفهم.
+## Runtime architecture
 
-### 2. الأدوات (Tools/Skills)
-- **البحث (Search):** القدرة على جلب معلومات من الإنترنت.
-- **العمليات الحسابية (Calculator):** تنفيذ العمليات الرياضية المعقدة.
-- **إدارة الملفات (File Management):** قراءة وكتابة الملفات في بيئة العمل.
+1. `Settings` loads runtime options from environment variables.
+2. `ModelGateway` converts generic settings and messages into a provider-neutral completion request through LiteLLM.
+3. `UnitedAgent` maintains the system prompt and bounded conversation context, then runs the response/tool-call loop.
+4. `ToolRegistry` publishes JSON Schemas and executes only explicitly registered handlers.
+5. `main.py` provides a minimal interactive CLI; other interfaces can reuse `UnitedAgent` without importing the CLI.
 
-### 3. الواجهة (Interface)
-- **واجهة سطر الأوامر (CLI):** للتفاعل المباشر والسريع.
-- **API (اختياري):** للسماح للتطبيقات الأخرى بالتواصل مع يونايتد.
+## Provider strategy
 
-## التقنيات المستخدمة
-- **اللغة:** Python 3.11+
-- **إطار العمل:** LangChain أو بنية مخصصة تعتمد على OpenAI SDK.
-- **قاعدة البيانات:** SQLite (لتخزين الذاكرة البسيطة).
+The project does not hard-code a separate SDK for every provider. LiteLLM provides a stable compatibility layer for a broad range of cloud and local providers. Provider-specific credentials remain in environment variables, while the agent only depends on the normalized completion response. A provider prefix in the model name is preserved to support advanced configurations.
 
-## هيكل المجلدات المقترح
-```text
-united-AI-agent/
-├── core/               # النواة والمنطق البرمجي
-│   ├── agent.py        # الفئة الرئيسية للعميل
-│   └── memory.py       # إدارة الذاكرة
-├── tools/              # الأدوات والمهارات
-│   ├── search.py
-│   └── file_ops.py
-├── main.py             # نقطة الانطلاق
-├── requirements.txt    # المكتبات المطلوبة
-└── README.md           # توثيق المشروع
-```
+## Tool safety
+
+Tools are opt-in and schema-driven. Each tool must have a unique name, a JSON Schema, and a callable handler. Tool arguments are parsed as JSON and failures are returned as ordinary tool results so the model can recover. Tools that access the filesystem, network, credentials, or external systems must add authorization, timeouts, input validation, and audit logging before production use.
+
+## Memory strategy
+
+`Memory` retains only the most recent configured number of messages. It returns deep copies so callers cannot mutate internal state accidentally. A future persistent-memory implementation can satisfy the same interface while storing encrypted records in SQLite or another database.
+
+## Reliability and operations
+
+The orchestration loop has a configurable maximum number of tool rounds. Provider failures are normalized into `ProviderError`, while the CLI keeps the session alive. Production deployments should add retries with exponential backoff, request timeouts, rate limits, secret redaction, structured logs, and metrics around provider latency and token usage.
+
+## Extension points
+
+A web API, streaming output, persistent memory, retrieval, or additional tools can be added around the existing core without rewriting provider integration. New provider support is generally a configuration change when the provider is supported by LiteLLM; otherwise a dedicated gateway implementation can be introduced behind the same `complete()` interface.

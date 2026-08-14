@@ -1,35 +1,92 @@
-import os
-from openai import OpenAI
+"""The core United agent orchestration loop."""
+
+from __future__ import annotations
+
+import json
+from typing import Any
+
+from .config import Settings
 from .memory import Memory
+from .providers import ModelGateway, ProviderError
+from .tools import ToolRegistry
+
 
 class UnitedAgent:
-    def __init__(self, model="gpt-4.1-mini"):
-        self.client = OpenAI()
-        self.memory = Memory()
-        self.model = model
+    """A provider-agnostic, tool-capable conversational agent."""
+
+    def __init__(
+        self,
+        settings: Settings | None = None,
+        gateway: ModelGateway | None = None,
+        tools: ToolRegistry | None = None,
+    ) -> None:
+        self.settings = settings or Settings.from_env()
+        self.memory = Memory(self.settings.max_history_messages)
+        self.tools = tools or ToolRegistry()
+        self.gateway = gateway or ModelGateway(self.settings)
         self.system_prompt = (
-            "أنت 'يونايتد' (United)، عميل ذكي متطور ومتعدد المهام. "
-            "تتميز بالذكاء، السرعة، والقدرة على مساعدة المستخدم في مختلف المجالات. "
-            "تحدث دائماً باللغة العربية بأسلوب مهني وودود."
+            "You are United, a reliable and capable general-purpose AI agent. "
+            "Answer in clear English unless the user asks for another language. "
+            "Be accurate, transparent about uncertainty, and concise by default. "
+            "Use available tools when they materially improve the answer. "
+            "Never claim that an action was completed unless it actually was."
         )
 
-    def chat(self, user_input):
-        # إضافة رسالة المستخدم للذاكرة
-        self.memory.add_message("user", user_input)
-        
-        # تحضير الرسائل مع الـ System Prompt
-        messages = [{"role": "system", "content": self.system_prompt}] + self.memory.get_history()
-        
+    def chat(self, user_input: str) -> str:
+        if not user_input or not user_input.strip():
+            raise ValueError("user_input must not be empty")
+
+        self.memory.add_message("user", user_input.strip())
+        messages: list[dict[str, Any]] = [
+            {"role": "system", "content": self.system_prompt},
+            *self.memory.get_history(),
+        ]
+
         try:
-            response = self.client.chat.completions.create(
-                model=self.model,
-                messages=messages
-            )
-            
-            ai_message = response.choices[0].message.content
-            # إضافة رد العميل للذاكرة
-            self.memory.add_message("assistant", ai_message)
-            return ai_message
-            
-        except Exception as e:
-            return f"عذراً، حدث خطأ أثناء معالجة طلبك: {str(e)}"
+            for _ in range(self.settings.max_tool_rounds + 1):
+                response = self.gateway.complete(messages, self.tools.schemas())
+                message = response.choices[0].message
+                tool_calls = getattr(message, "tool_calls", None) or []
+
+                if not tool_calls:
+                    content = (getattr(message, "content", None) or "").strip()
+                    if not content:
+                        raise ProviderError("The model returned an empty response")
+                    self.memory.add_message("assistant", content)
+                    return content
+
+                assistant_message = {
+                    "role": "assistant",
+                    "content": getattr(message, "content", None),
+                    "tool_calls": [self._tool_call_dict(call) for call in tool_calls],
+                }
+                messages.append(assistant_message)
+                for call in tool_calls:
+                    name = call.function.name
+                    try:
+                        arguments = json.loads(call.function.arguments or "{}")
+                    except json.JSONDecodeError:
+                        arguments = {}
+                    result = self.tools.execute(name, arguments)
+                    messages.append(
+                        {"role": "tool", "tool_call_id": call.id, "content": result}
+                    )
+            raise ProviderError("The agent exceeded its maximum tool-call rounds")
+        except ProviderError:
+            raise
+        except Exception as exc:
+            raise ProviderError(f"Agent execution failed: {exc}") from exc
+
+    @staticmethod
+    def _tool_call_dict(call: Any) -> dict[str, Any]:
+        return {
+            "id": call.id,
+            "type": "function",
+            "function": {
+                "name": call.function.name,
+                "arguments": call.function.arguments,
+            },
+        }
+
+    def clear_memory(self) -> None:
+        self.memory.clear()
