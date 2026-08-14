@@ -22,6 +22,8 @@ class Settings:
     max_tokens: int = 2048
     max_history_messages: int = 40
     max_tool_rounds: int = 6
+    memory_db_path: str = "data/united_memory.db"
+    rag_top_k: int = 4
 
     @classmethod
     def from_env(cls) -> "Settings":
@@ -38,6 +40,8 @@ class Settings:
             max_tokens=int(os.getenv("AI_MAX_TOKENS", "2048")),
             max_history_messages=int(os.getenv("AI_MAX_HISTORY_MESSAGES", "40")),
             max_tool_rounds=int(os.getenv("AI_MAX_TOOL_ROUNDS", "6")),
+            memory_db_path=os.getenv("MEMORY_DB_PATH", "data/united_memory.db"),
+            rag_top_k=int(os.getenv("RAG_TOP_K", "4")),
         )
 
     def completion_model(self) -> str:

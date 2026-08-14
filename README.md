@@ -77,6 +77,25 @@ For a custom endpoint, set `AI_API_BASE=https://your-service.example/v1`. Model 
 
 ## Advanced tools
 
+### Code Interpreter
+
+The `execute_python` tool lets the agent run short Python scripts for calculations and data processing. Scripts are parsed before execution, dangerous modules and built-ins are blocked, execution runs in a temporary directory, output is limited, and a timeout is enforced. This is defense-in-depth for a trusted single-user environment, not a complete security boundary for hostile multi-tenant code; production deployments should add container or VM isolation.
+
+### Web UI
+
+A Streamlit interface is available through `app.py`:
+
+```bash
+streamlit run app.py
+```
+
+The interface supports chat, persistent-memory clearing, and uploading UTF-8 documents for indexing into RAG.
+
+### Persistent memory and RAG
+
+The agent stores messages and indexed documents in SQLite. Before each response, it retrieves the most relevant stored documents using lightweight lexical scoring and supplies them as reference context to the model. Configure the location with `MEMORY_DB_PATH` and the number of retrieved documents with `RAG_TOP_K`.
+
+
 The agent now exposes two additional tools through the same JSON-schema tool-calling loop:
 
 | Tool | Purpose | Safety boundary |
@@ -84,7 +103,13 @@ The agent now exposes two additional tools through the same JSON-schema tool-cal
 | `web_search` | Searches the public web and returns titles, URLs, and short snippets. | Uses a timeout and returns reference data only; page content must be treated as untrusted input. |
 | `read_file` | Reads UTF-8 text files for code and document analysis. | Access is restricted to `AGENT_FILE_ROOT`, text extensions, a 2 MB file size limit, and a configurable output limit. |
 
-Set `AGENT_FILE_ROOT` in `.env` when the agent should inspect a specific workspace. Relative paths are resolved inside that directory, and path traversal outside it is rejected. The web search tool does not require an API key and uses DuckDuckGo's public HTML results endpoint.
+Set `AGENT_FILE_ROOT` in `.env` when the agent should inspect a specific workspace. For example:
+
+```dotenv
+AGENT_FILE_ROOT=/absolute/path/to/workspace
+```
+
+This line belongs in the `.env` file located in the project root, next to `main.py` and `requirements.txt`. Start from `.env.example` with `cp .env.example .env`, then replace the example path with the absolute path of the directory the agent may read. Relative paths are resolved inside that directory, and path traversal outside it is rejected. The web search tool does not require an API key and uses DuckDuckGo's public HTML results endpoint.
 
 ## Testing
 

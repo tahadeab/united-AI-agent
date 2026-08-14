@@ -7,6 +7,7 @@ import operator
 from datetime import datetime, timezone
 from typing import Any, Callable
 
+from .code_interpreter import execute_python
 from .file_tools import read_local_file
 from .web import search_web
 
@@ -45,6 +46,20 @@ class ToolRegistry:
                 "additionalProperties": False,
             },
             handler=search_web,
+        )
+        self.register(
+            name="execute_python",
+            description="Run a short Python script in a restricted temporary environment for calculations and data processing.",
+            parameters={
+                "type": "object",
+                "properties": {
+                    "script": {"type": "string", "description": "Python source code to execute."},
+                    "timeout_seconds": {"type": "integer", "minimum": 1, "maximum": 15},
+                },
+                "required": ["script"],
+                "additionalProperties": False,
+            },
+            handler=execute_python,
         )
         self.register(
             name="read_file",

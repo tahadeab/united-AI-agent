@@ -1,6 +1,10 @@
 from types import SimpleNamespace
 
+import pytest
+
 from core.agent import UnitedAgent
+from core.code_interpreter import execute_python
+from core.persistent_memory import PersistentMemory
 from core.config import Settings
 from core.memory import Memory
 from core.file_tools import read_local_file
@@ -63,9 +67,24 @@ def test_search_parser_extracts_result_links():
     assert parser.results[0]["url"] == "https://example.com"
 
 
+def test_code_interpreter_runs_safe_python_and_blocks_dangerous_calls():
+    assert execute_python("print(sum([1, 2, 3]))") == "6"
+    with pytest.raises(PermissionError):
+        execute_python("import os")
+
+
+def test_persistent_memory_stores_messages_and_retrieves_documents(tmp_path):
+    memory = PersistentMemory(str(tmp_path / "memory.db"))
+    memory.add_message("user", "Remember this")
+    memory.add_document("notes.md", "Python agents can use persistent retrieval memory")
+    assert memory.recent_messages()[0]["content"] == "Remember this"
+    assert memory.retrieve("persistent Python retrieval")[0]["source"] == "notes.md"
+    memory.close()
+
+
 def test_agent_exposes_advanced_tools():
     names = {item["function"]["name"] for item in ToolRegistry().schemas()}
-    assert {"web_search", "read_file", "calculator", "current_time"} <= names
+    assert {"web_search", "read_file", "execute_python", "calculator", "current_time"} <= names
 
 
 def test_agent_executes_tool_and_returns_final_answer():
