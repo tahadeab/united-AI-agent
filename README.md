@@ -65,13 +65,26 @@ For a custom endpoint, set `AI_API_BASE=https://your-service.example/v1`. Model 
 │   ├── config.py      # Environment-backed runtime settings
 │   ├── memory.py      # Bounded conversation memory
 │   ├── providers.py   # Provider-agnostic model gateway
-│   └── tools.py       # Explicit, safe tool registry
+│   ├── tools.py       # Explicit, safe tool registry
+│   ├── web.py         # Public web search helper
+│   └── file_tools.py  # Sandboxed local file reader
 ├── tests/
 │   └── test_agent.py  # Offline unit tests
 ├── .env.example
 ├── main.py
 └── requirements.txt
 ```
+
+## Advanced tools
+
+The agent now exposes two additional tools through the same JSON-schema tool-calling loop:
+
+| Tool | Purpose | Safety boundary |
+| --- | --- | --- |
+| `web_search` | Searches the public web and returns titles, URLs, and short snippets. | Uses a timeout and returns reference data only; page content must be treated as untrusted input. |
+| `read_file` | Reads UTF-8 text files for code and document analysis. | Access is restricted to `AGENT_FILE_ROOT`, text extensions, a 2 MB file size limit, and a configurable output limit. |
+
+Set `AGENT_FILE_ROOT` in `.env` when the agent should inspect a specific workspace. Relative paths are resolved inside that directory, and path traversal outside it is rejected. The web search tool does not require an API key and uses DuckDuckGo's public HTML results endpoint.
 
 ## Testing
 
